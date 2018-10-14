@@ -1,6 +1,6 @@
 # Customer-Segment-Prediction
 
-Present a simple R Markdown document in which you demonstrate the use of K-NN and logistic regression on the wholesale.csv dataset.
+Present a R Markdown document in which you demonstrate the use of K-NN and logistic regression on the wholesale.csv dataset.
 Compare the k-NN to the logistic regression model and answer the following questions throughout the document:<br />
 - What is your accuracy? Was the logistic regression better than K_NN in terms of accuracy? (recall the lesson on obtaining an unbiased estimate of the model’s accuracy)<br />
 - Was the logistic regression better than our K_NN model at explaining which of the variables are good predictors of a customer’s industry?<br />
