@@ -1,0 +1,349 @@
+---
+title: 'Customer Segment Prediction'
+author: "Achmad Gunar Saadi"
+date: "August 22, 2018"
+output:
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float:
+      collapsed: FALSE
+    highlight:  pygments
+    theme: spacelab
+    number_sections: TRUE
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction {.tabset}
+## Objectives
+__Project: Customer Segment Prediction__<br />
+
+Present a R Markdown document in which you demonstrate the use of K-NN and logistic regression on the **wholesale.csv** dataset.<br />
+Compare the k-NN to the logistic regression model and answer the following questions throughout the document:<br />
+* What is your accuracy?  Was the logistic regression better than K_NN in terms of accuracy? (recall the lesson on obtaining an unbiased estimate of the model's accuracy)<br />
+* Was the logistic regression better than our K_NN model at explaining which of the variables are good predictors of a customer's industry?<br />
+* What are the advantage and disadvantage of k-NN and logistic regression?<br />
+
+As for the indicators of a good result are: <br />
+1. The document demonstrates the accuracy of both approach<br />
+2. The document demonstrates explanations of the accuracy of a model and how it is better than the other<br />
+3. The document demonstrates 1 disadvantage and 1 strength of each of the approach (K_NN and logistic regression)<br />
+
+
+## Data Explanation
+
+The data set refers to clients of a wholesale distributor. It includes the annual spending in monetary units (m.u.) on diverse product categories which are through a distribution network consisting of hotel, restaurany, cafes, and all variety of retail outlets.<br />
+We would like to build an algorithm that automatically sort our customers into one of two segments:  
+- **Horeca**: Short for Hotel, Restaurant and Cafe  
+- **Retail**: Retail industry
+
+The dataset originated from a dataset prepared by Margarida Cardoso and [available on the UCI Machine Learning repository](https://archive.ics.uci.edu/ml/datasets/Wholesale+customers) and comprise of 8 variables as follow:<br />
+
+- **Channel** ---  customers' channel; consist of __1= Horeca__ (Hotel/Restaurant/Cafe) or __2= Retail__ channel (Nominal) <br />
+- **Regional** --- customers' region; consist of __1= Lisbon__, __2= Porto__, or __3= Other__ (Nominal)<br />
+- **Fresh** --- annual spending (m.u.) on fresh products (Continuous) <br />
+- **Milk** --- annual spending (m.u.) on milk products (Continuous) <br />
+- **Grocery** --- annual spending (m.u.)on grocery products (Continuous) <br />
+- **Frozen** --- annual spending (m.u.)on frozen products (Continuous) <br />
+- **Detergents_Paper** --- annual spending (m.u.) on detergents and paper products (Continuous) <br />
+- **Delicassen** --- annual spending (m.u.)on and delicatessen products (Continuous) <br />
+
+## Read and understand the Dataset
+This is how the data look like (I only display the first 6 data) and including the 8 parameters mentioned before. <br />The dimension of data inform that the number of row (observations) is 440 and each has 8 parameters.<br />
+```{r}
+wholesale <- read.csv("./wholesale.csv")
+head(wholesale)
+dim(wholesale)
+```
+
+# Exploring the Data
+## Quick Look the data
+
+By using summary(), we can tell that each variables has various range of value each other. The dataset comprise from integer datatype from str(). There is no missing value (NA) in the dataset therefore doesn't need to data imputing process.
+```{r}
+summary(wholesale)
+str(wholesale)
+anyNA(wholesale)
+```
+
+## Modified the data
+We are gonna drop (erase) Region variable because it is unnecessary in the process. Another reason is there is a possibility the variable can be a noise for the overall process.
+```{r}
+# Drop the unncessary variable (Region)
+wholesale <- wholesale[,-2]
+names(wholesale)
+```
+
+From the sub-section above we know that all of the variables are integer type. The label/target variable needs to converted into factor type so that differentiated as horeca and retail (2 levels).
+
+```{r}
+#  Convert the variable Cchannel from int to factor type
+wholesale$Channel <- factor(wholesale$Channel, levels = c(1, 2), labels = c("horeca", "retail"))
+str(wholesale)
+```
+
+### Data Normalization
+As mentioned in previous sub-section, the range of value each variable different each other. Because of it, it is important to data normalization so as the range of value is uniform or similar. We are gonna use z-value normalization, but without do the normalization to target variable (Channel). The obtained normalization result is placed in new variable and after that the target variable is merged into it (as the 7th column).
+
+```{r}
+wholesale.norm <- as.data.frame(scale(wholesale[,-1]))
+summary(wholesale.norm)
+```
+
+```{r}
+# Merge the label vector into wholesale.norm
+wholesale.mod <- as.data.frame(cbind(wholesale.norm, Channel = wholesale$Channel))
+```
+
+### Train and Test dataset
+Split the data set into train set (80%) and Test set (20%) by previously shuffle the order of the row of to get unbiased result.
+
+```{r}
+# Proportion: 
+# ************************
+# 80% train and 20% test  
+# ************************
+set.seed(123)
+wholesale.mod <- wholesale.mod[sample(nrow(wholesale.mod)), ]
+wholesale_train <- wholesale.mod[1:(nrow(wholesale.mod)*0.8), ]
+wholesale_test <- wholesale.mod[((nrow(wholesale.mod)*0.8)+1):(nrow(wholesale.mod)), ]
+table(wholesale_train$Channel)
+# alternatively, shuffle the index number
+# inTrain<-sample(1:nrow(loans.s),nrow(loans.s)*0.8)
+#Train data (80%)
+# loans.s_train<-loans.s[inTrain,]
+#Test data(20%)
+# loans_test<-loans.s[-inTrain,]
+```
+As the above code run, the proportion of the target variable in train dataset is dominated by horeca by more than twice than retail. 
+
+## K-Nearest Neighbour
+There are some functions that created from scratch for Distance Functions, K_NN process, and accuracy.
+### Distance Function
+We are gonna compared the performance between manhattan distance (L1-distance) and euclidean distance function (L2-distance).
+#### Manhattan Distance Function
+```{r}
+manhattan.d <- function(a,b){
+  # initialize d
+  d <- 0  
+  # Each a/b has 7 features, so i loops through 1:6 feature & ignores Channel (7th variable/ column)
+  for (i in c(1: (length(a)-1) )){ 
+    d <- d + abs(a[[i]] - b[[i]])
+  }
+  return(d)
+}
+```
+
+#### Euclidean Distance Function
+```{r}
+euclidean.d <- function(a,b){
+  # initialize d
+  d <- 0  
+  # Each a/b has 7 features, so i loops through 1:6 feature & ignores Channel (7th variable/ column)
+  for (i in c(1: (length(a)-1) )){ 
+    d <- d + ( a[[i]] - b[[i]] )^2
+  }
+  d <- sqrt(d)
+  return(d)
+}
+```
+
+### K_NN Function
+This is the K_NN Functions using manhattan distance function.
+
+```{r}
+K_NN_euclidean <- function( train, test, k){
+  # initialize a vector that will hold our prediction values
+  pred.v <- c() 
+  # for each record of test data 
+  for( i in c(1: nrow(test))){
+    # initialize distance vector, categories
+    dist.v <- c()
+    catg.v <- c()
+
+      
+      # loop over each train data (think: apple, lettuce, fish)
+      for(j in c(1:nrow(train))){
+        
+        # add euclidean distance btw test and train data to dist vec
+        dist.v <- c(dist.v, euclidean.d(train[j, ], test[i, ]))
+        # add class variable of training data (apple, lettuce, fish) to categories vec
+        catg.v <- c(catg.v, as.character(train[j, ][[7]]) )
+      }
+    
+    # create a df combining both dist.v and catg.v
+    neighbors <- data.frame(catg.v, dist.v)
+    
+    # sort neighbors df so top neighbors are on top
+    neighbors <- neighbors[order(neighbors[,2]),]
+    
+    # take the top k neighbors
+    neighbors <- neighbors[1:k,]
+    
+    # determine the output and add this to predictions vector
+    if(nrow(neighbors[neighbors[,1] == "horeca", ]) > nrow(neighbors[neighbors[,1] == "retail", ])){pred.v <- c(pred.v, "horeca")
+    }else pred.v <- c(pred.v, "retail")
+    
+  }
+  return(pred.v)
+}
+```
+This is the K_NN Functions using euclidean distance function.
+
+```{r}
+K_NN_manhattan <- function( train, test, k){
+  # initialize a vector that will hold our prediction values
+  pred.v <- c() 
+  # for each record of test data 
+  for( i in c(1: nrow(test))){
+    # initialize distance vector, categories
+    dist.v <- c()
+    catg.v <- c()
+
+      
+      # loop over each train data (think: apple, lettuce, fish)
+      for(j in c(1:nrow(train))){
+        
+        # add manhattan distance btw test and train data to dist vec
+        dist.v <- c(dist.v, manhattan.d(train[j, ], test[i, ]))
+        # add class variable of training data (apple, lettuce, fish) to categories vec
+        catg.v <- c(catg.v, as.character(train[j, ][[7]]) )
+      }
+    
+    # create a df combining both dist.v and catg.v
+    neighbors <- data.frame(catg.v, dist.v)
+    
+    # sort neighbors df so top neighbors are on top
+    neighbors <- neighbors[order(neighbors[,2]),]
+    
+    # take the top k neighbors
+    neighbors <- neighbors[1:k,]
+    
+    # determine the output and add this to predictions vector
+    if(nrow(neighbors[neighbors[,1] == "horeca", ]) > nrow(neighbors[neighbors[,1] == "retail", ])){pred.v <- c(pred.v, "horeca")
+    }else pred.v <- c(pred.v, "retail")
+    
+  }
+  return(pred.v)
+}
+```
+
+
+### Accuracy Function
+```{r}
+accuracy <- function(data){
+  # initialize number of predictions
+  correct <- 0
+  for(i in c(1:nrow(data))){
+    #7th variable is actual class, 8th is our predicted class
+    if(data[i, 7] == data[i, 8]){
+      correct <- correct + 1
+    }
+  }
+  percentage <- correct/nrow(data) *100
+  return(percentage)
+}
+```
+
+### Miscalculation Function
+```{r}
+miscalculation <- function(data){
+  # initialize number of predictions
+  correct <- 0
+  for(i in c(1:nrow(data))){
+    #7th variable is actual class, 8th is our predicted class
+    if(data[i, 7] == data[i, 8]){
+      correct <- correct + 1
+    }
+  }
+  miscal <- 100-(correct/nrow(data)*100)
+  return(miscal)
+}
+```
+
+
+### Execute K_NN Process
+We choose the k=19 because we approch by formula sqrt(nrow(x)), that means square root of 352.<br />
+This step we are do the K_NN process (by manhattan distance and euclidean distance). After that, evaluate the result by confusion matrix to understand the accuracy and miscalculation.
+
+```{r}
+predictions.m <- K_NN_manhattan(train = wholesale_train, test = wholesale_test, k=19)
+# The predicted value (using manhattan distance) will be automatically the 8th columns
+wholesale_test$Predicted.Manh <- predictions.m
+print(accuracy(wholesale_test))
+print(miscalculation(wholesale_test))
+library(gmodels)
+CrossTable(x = wholesale_test$Channel, y = wholesale_test$Predicted.Manh)
+```
+
+```{r}
+predictions.e <- K_NN_euclidean(train = wholesale_train, test = wholesale_test, k=19)
+# drop the 8th column and make the predicted value (using euclidean distance) the 8th column
+wholesale_test <- wholesale_test[,-8]
+wholesale_test$Predicted.Euc <- predictions.e
+print(accuracy(wholesale_test))
+print(miscalculation(wholesale_test))
+CrossTable(x = wholesale_test$Channel, y = wholesale_test$Predicted.Euc)
+```
+
+### Logistic Regression Process
+
+```{r}
+# Create the model using glm() function
+Wholesale_model<-glm(Channel ~ ., data=wholesale_train,family="binomial")
+summary(Wholesale_model)
+```
+```{r}
+# Predict the test set using obtained model
+wholesale_test$Pred <-predict(Wholesale_model,wholesale_test,type = "response")
+head(wholesale_test$Pred)
+# Convert ther prediction into binomial value (0 and 1)
+wholesale_test$Pred<-ifelse(wholesale_test$Pred >= 0.5,"retail","horeca")
+head(wholesale_test$Pred)
+table(wholesale_test$Pred)
+# The accuracy
+accuracy<-nrow(wholesale_test[wholesale_test$Channel == wholesale_test$Pred,])/nrow(wholesale_test)*100
+accuracy
+# The miscalculation
+100-accuracy
+# Confusion matrix
+CrossTable(x = wholesale_test$Channel, y = wholesale_test$Pred)
+```
+
+# Conclusion
+
+**__What is your accuracy?  Was the logistic regression better than K_NN in terms of accuracy? (recall the lesson on obtaining an unbiased estimate of the model's accuracy)__**<br />
+
+Overall the K_NN process using __manhattan distance__ and __euclidean distance__ function has quite similar or not has any significant difference of accuracy. If any, it is merely because we use sample() function in order to obtain unbiased results and it is very insignificant difference<br />
+The accuracy and miscalculation from using manhattan (L1-distance) by **88.64%** and **11.36%** respectively indicating sufficient enough results.<br />
+The same for K_NN using euclidean which accuracy and miscalcuation valeu are **87.5%** and **12.5%** respectively.<br />
+On the other hand, the accuracy from using logistic regression approach just **__slighly below__** those results by **84.1%**.<br />
+
+**__Was the logistic regression better than our K_NN model at explaining which of the variables are good predictors of a customer's industry?__**<br />
+
+Logistic Regression approach can tell which variable(s) are signifantly affect the customer's industry better than in K_NN method. From the code line __summary(Wholesale_model)__ we can say that, by check the statistic significance and the estimated coefficient, the best predictor is **__Detergents_Paper__** variable. <br />
+
+
+**__What are the advantage and disadvantage of k-NN and logistic regression?__**<br />
+
+## K-NN method
+### Advantages
+* Can be used to classify more than just binary value (dichotomy) classification.
+* Used to predict the label.
+* Able to learn non-linear boundaries.
+
+### Disadvantages
+* Unable to precisely tell which variable the best predictor for the target.
+
+## Logistic Regression
+### Advantages
+* Used to predict the probability.
+* Able to precisely tell which variable the best predictor for the target.
+
+### Disadvantages
+* Limited to classify binary value (dichotomy) classification.
+* Only able to learn linear boundaries.
